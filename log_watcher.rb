@@ -19,7 +19,7 @@ class Commit
     message = (@fragment / "msg text()")[0].to_s
     summary = message.split(/\n/)[0]
     if summary.size > 50
-      summary[0,50] + "..."
+      summary[0,46] + "..."
     else
       summary
     end
@@ -40,13 +40,13 @@ class LogReporter
   end
 
   def stop
-    report "Stopping."
+    puts "[#{@project}] Stopping." if $DEBUG
     @thread.terminate
     @thread = nil
   end
 
   def start
-    report "Starting."
+    puts "[#{@project}] Starting." if $DEBUG
     @thread = Thread.new do
       loop do
         report(*new_commits)
@@ -70,13 +70,19 @@ class LogReporter
   end
 
   def new_commits
-    return [] if head_commit == last_commit
-    command = "cd #{project_dir} && svn log --xml -r#{last_commit}:HEAD #{repository_root}"
-    commit_document = Hpricot(%x[#{command}])
-    commits = commit_document / "logentry"
-    commits = commits.to_a.map { |commit| Commit.new(commit) }
-    record_last_commit(commits[-1].revision_number)
-    commits
+    puts "[#{@project}] Getting commits since #{last_commit}" if $DEBUG
+    if head_commit != last_commit
+      command = "cd #{project_dir} && svn log --xml -r#{last_commit.to_i + 1}:HEAD #{repository_root}"
+      commit_document = Hpricot(%x[#{command}])
+      commits = commit_document / "logentry"
+      commits = commits.to_a.map { |commit| Commit.new(commit) }
+      puts "[#{@project}] #{commits.size} commits: #{commits.map { |c| c.revision_number }.join(', ')}."
+      record_last_commit(commits[-1].revision_number)
+      commits
+    else
+      record_last_commit(head_commit) if !File.exist?(commit_file)
+      []
+    end
   end
 
   def last_commit
@@ -98,6 +104,7 @@ class LogReporter
   end
 
   def record_last_commit(commit_id)
+    puts "Recording last commit as #{commit_id}" if $DEBUG
     File.open(commit_file, 'w+') do |f|
       f.puts commit_id.to_s
       f.flush
