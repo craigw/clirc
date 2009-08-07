@@ -6,6 +6,12 @@ require 'socket'
 
 CLIRC_DIR = ENV['HOME'] + '/.clirc'
 
+module Subversion
+  def Subversion.client_binary
+    "/opt/local/bin/svn"
+  end
+end
+
 class Commit
   def initialize(fragment)
     @fragment = fragment
@@ -39,40 +45,24 @@ class LogReporter
     @project = project
   end
 
-  def stop
-    puts "[#{@project}] Stopping." if $DEBUG
-    @thread.terminate
-    @thread = nil
+  def report
+    announce(*new_commits)
   end
 
-  def start
-    puts "[#{@project}] Starting." if $DEBUG
-    @thread = Thread.new do
-      loop do
-        report(*new_commits)
-        # Jitter to spread the load a little
-        jitter = [0,1,2,3,4,5].sort_by{rand}[0]
-        sleep 15 + jitter
-      end
-    end
-  end
-
-  def report(*messages)
-    Thread.new do
-      messages.each do |message|
-        puts "#{Time.now.to_s} | [#{@project}] #{message.to_s}"
-        socket = TCPSocket.open('irccat.local', 12345)
-        socket.send("[#{@project}] #{message.to_s}\r\n", 0)
-        socket.close
-        sleep 0.5
-      end
-    end
+  def announce(*messages)
+    socket = TCPSocket.open('irccat.local', 12345)
+    messages.each do |message|
+      puts "#{Time.now.to_s} | [#{@project}] #{message.to_s}"
+      socket.send("[#{@project}] #{message.to_s}\r\n", 0)
+      sleep 0.5
+    end  
+    socket.close
   end
 
   def new_commits
     puts "[#{@project}] Getting commits since #{last_commit}" if $DEBUG
     if head_commit != last_commit
-      command = "cd #{project_dir} && svn log --xml -r#{last_commit.to_i + 1}:HEAD #{repository_root}"
+      command = "cd #{project_dir} && #{Subversion.client_binary} log --xml -r#{last_commit.to_i + 1}:HEAD #{repository_root}"
       commit_document = Hpricot(%x[#{command}])
       commits = commit_document / "logentry"
       commits = commits.to_a.map { |commit| Commit.new(commit) }
@@ -94,12 +84,12 @@ class LogReporter
   end
 
   def head_commit
-    command = "cd #{project_dir} && svn info -rHEAD #{repository_root}"
+    command = "cd #{project_dir} && #{Subversion.client_binary} info -rHEAD #{repository_root}"
     %x[#{command}].scan(/Revision\: (\d+)/)[0][0].to_i
   end
 
   def repository_root
-    command = "cd #{project_dir} && svn info"
+    command = "cd #{project_dir} && #{Subversion.client_binary} info"
     %x[#{command}].scan(/Repository Root\: (.*)/)[0][0]
   end
 
@@ -121,45 +111,22 @@ class LogReporter
 end
 
 class ProjectManager
-  @@reporters = {}
-
   def ProjectManager.run
     new.run
   end
 
   def run
-    loop do
-      projects = Dir[CLIRC_DIR + '/projects/*'].map { |dir| File.basename(dir) }
-      new_watches = projects - reporter_names
-      stopped_watches = reporter_names - projects
-      new_watches.each do |project|
-        start_reporting_on(project)
-      end
-      stopped_watches.each do |project|
-        stop_reporting_on(project)
-      end
-      sleep 5
+    projects = Dir[CLIRC_DIR + '/projects/*'].map { |dir| File.basename(dir) }
+    projects.each do |project|
+      reporting_on(project)
     end
   end
 
   private
-  def reporter_names
-    @@reporters.keys.sort
-  end
 
-  def start_reporting_on(project)
-    if !@@reporters.key?(project.to_s)
-      reporter = LogReporter.new(project)
-      @@reporters[project.to_s] = reporter
-      reporter.start
-    end
-  end
-
-  def stop_reporting_on(project)
-    if @@reporters.key?(project.to_s)
-      reporter = @@reporters.delete(project.to_s)
-      reporter.stop
-    end
+  def reporting_on(project)
+    reporter = LogReporter.new(project)
+    reporter.report
   end
 end
 
