@@ -1,0 +1,32 @@
+CLIRC
+=====
+
+Commit Log => IRC because sometimes you're not allowed to edit the Subversion
+post-commit hooks. Sigh.
+
+Prerequisites
+-------------
+
+Get irccat: http://github.com/RJ/irccat
+Set it up somewhere and change your /etc/hosts to point irc.local to it.
+
+Setup
+-----
+
+Clone the repository. It'll live wherever you want it to.
+
+mkdir ~/.clirc
+
+# edit ~/.clirc/project.list
+# format is [project_svn_root] [project name], eg:
+# http://flot.googlecode.com/svn/trunk/ flot
+# http://jquery-ui.googlecode.com/svn/tags jQuery UI
+
+Add this to your crontab with the interval you'd like it to run at:
+
+*/5 * * * * /usr/bin/env ruby /path/to/clirc/log_watcher.rb
+
+Authors
+-------
+
+You can blame me for this. Craig R Webster <http://barkingiguana.com/>. Sorry.
