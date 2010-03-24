@@ -41,8 +41,10 @@ class Commit
 end
 
 class LogReporter
-  def initialize(project)
-    @project = project
+  attr_reader :repository_root, :project_name
+  def initialize(repository_root, project_name)
+    @repository_root = repository_root
+    @project_name = project_name
   end
 
   def report
@@ -52,24 +54,28 @@ class LogReporter
   def announce(*messages)
     socket = TCPSocket.open('irccat.local', 12345)
     messages.each do |message|
-      puts "#{Time.now.to_s} | [#{@project}] #{message.to_s}"
-      socket.send("[#{@project}] #{message.to_s}\r\n", 0)
+      puts "#{Time.now.to_s} | [#{project_name}] #{message.to_s}" if $DEBUG
+      socket.send("[#{project_name}] #{message.to_s}\r\n", 0)
       sleep 0.5
     end  
     socket.close
   end
 
   def new_commits
-    puts "[#{@project}] Getting commits since #{last_commit}" if $DEBUG
+    puts "[#{project_name}] Getting commits since #{last_commit}" if $DEBUG
     if head_commit != last_commit
-      command = "cd #{project_dir} && #{Subversion.client_binary} log --xml -r#{last_commit.to_i + 1}:HEAD #{repository_root}"
+      puts "New commits. Going to get info." if $DEBUG
+      command = "#{Subversion.client_binary} log --xml -r#{last_commit.to_i + 1}:HEAD #{repository_root}"
       commit_document = Hpricot(%x[#{command}])
       commits = commit_document / "logentry"
+      puts "Got #{commits.to_a.size} commits" if $DEBUG
       commits = commits.to_a.map { |commit| Commit.new(commit) }
       puts "[#{@project}] #{commits.size} commits: #{commits.map { |c| c.revision_number }.join(', ')}."
+      puts "Recording last commit as #{commits[-1].revision_number}."
       record_last_commit(commits[-1].revision_number)
       commits
     else
+      puts "Record last commit as #{head_commit}? #{!File.exist?(commit_file)}"
       record_last_commit(head_commit) if !File.exist?(commit_file)
       []
     end
@@ -84,29 +90,19 @@ class LogReporter
   end
 
   def head_commit
-    command = "cd #{project_dir} && #{Subversion.client_binary} info -rHEAD #{repository_root}"
+    command = "#{Subversion.client_binary} info -rHEAD #{repository_root}"
     %x[#{command}].scan(/Revision\: (\d+)/)[0][0].to_i
-  end
-
-  def repository_root
-    command = "cd #{project_dir} && #{Subversion.client_binary} info"
-    %x[#{command}].scan(/Repository Root\: (.*)/)[0][0]
   end
 
   def record_last_commit(commit_id)
     puts "Recording last commit as #{commit_id}" if $DEBUG
     File.open(commit_file, 'w+') do |f|
       f.puts commit_id.to_s
-      f.flush
     end
   end
 
   def commit_file
-    CLIRC_DIR + '/data/' + @project + '.head'
-  end
-
-  def project_dir
-    CLIRC_DIR + '/projects/' + @project
+    CLIRC_DIR + '/' + project_name + '.commit'
   end
 end
 
@@ -116,16 +112,17 @@ class ProjectManager
   end
 
   def run
-    projects = Dir[CLIRC_DIR + '/projects/*'].map { |dir| File.basename(dir) }
+    projects = File.read(CLIRC_DIR + '/projects.list').split(/\n/)
     projects.each do |project|
-      reporting_on(project)
+      reporting_on(*project.split(/\s+/, 2))
     end
   end
 
   private
 
-  def reporting_on(project)
-    reporter = LogReporter.new(project)
+  def reporting_on(project, project_name)
+    puts "#{project} #{project_name}..."
+    reporter = LogReporter.new(project, project_name)
     reporter.report
   end
 end
