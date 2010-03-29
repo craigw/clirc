@@ -23,7 +23,7 @@ class Commit
 
   def summary
     message = (@fragment / "msg text()")[0].to_s
-    summary = message.split(/\n/)[0]
+    summary = message.split(/\n/)[0].to_s
     if summary.size > 50
       summary[0,46] + "..."
     else
