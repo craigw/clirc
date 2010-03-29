@@ -57,7 +57,7 @@ class LogReporter
       puts "#{Time.now.to_s} | [#{project_name}] #{message.to_s}" if $DEBUG
       socket.send("[#{project_name}] #{message.to_s}\r\n", 0)
       sleep 0.5
-    end  
+    end
     socket.close
   end
 
@@ -70,12 +70,12 @@ class LogReporter
       commits = commit_document / "logentry"
       puts "Got #{commits.to_a.size} commits" if $DEBUG
       commits = commits.to_a.map { |commit| Commit.new(commit) }
-      puts "[#{@project}] #{commits.size} commits: #{commits.map { |c| c.revision_number }.join(', ')}."
-      puts "Recording last commit as #{commits[-1].revision_number}."
+      puts "[#{project_name}] #{commits.size} commits: #{commits.map { |c| c.revision_number }.join(', ')}." if $DEBUG
+      puts "Recording last commit as #{commits[-1].revision_number}." if $DEBUG
       record_last_commit(commits[-1].revision_number)
       commits
     else
-      puts "Record last commit as #{head_commit}? #{!File.exist?(commit_file)}"
+      puts "Record last commit as #{head_commit}? #{!File.exist?(commit_file)}" if $DEBUG
       record_last_commit(head_commit) if !File.exist?(commit_file)
       []
     end
@@ -91,7 +91,10 @@ class LogReporter
 
   def head_commit
     command = "#{Subversion.client_binary} info -rHEAD #{repository_root}"
-    %x[#{command}].scan(/Revision\: (\d+)/)[0][0].to_i
+    puts command if $DEBUG
+    output = %x[#{command}].strip
+    puts "GOT: #{output}" if $DEBUG
+    output.scan(/Revision\: (\d+)/)[0][0].to_i
   end
 
   def record_last_commit(commit_id)
@@ -121,7 +124,7 @@ class ProjectManager
   private
 
   def reporting_on(project, project_name)
-    puts "#{project} #{project_name}..."
+    puts "#{project} #{project_name}..." if $DEBUG
     reporter = LogReporter.new(project, project_name)
     reporter.report
   end
